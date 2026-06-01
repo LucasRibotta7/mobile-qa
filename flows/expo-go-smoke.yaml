@@ -1,0 +1,16 @@
+# Smoke test for list-app running inside Expo Go on a physical device.
+# Run it after a fresh launch (force-stop + deep link) so Expo Go starts on the
+# default Home route. Covers Home -> Explore (both render correctly).
+# NOTE: the Profile tab renders a blank screen — a real finding from the first
+# run — so it is intentionally excluded here.
+# Run: node bin/cli.js run --platform android --app list-app --flow flows/expo-go-smoke.yaml
+appId: host.exp.exponent
+---
+# Tolerate the Expo Go bundle/loading screen before the app renders.
+- extendedWaitUntil:
+    visible: "Welcome !"
+    timeout: 40000
+- takeScreenshot: 001_home
+- tapOn: "Explore"
+- assertVisible: "File-based routing"
+- takeScreenshot: 002_explore

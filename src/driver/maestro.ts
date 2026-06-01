@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { readdirSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readdirSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import { which } from "./exec.js";
 
 export function maestroCmd(): string {
@@ -8,7 +8,10 @@ export function maestroCmd(): string {
 }
 
 export async function maestroInstalled(): Promise<boolean> {
-  return which(maestroCmd());
+  const cmd = maestroCmd();
+  // QA_MAESTRO may be an explicit path (e.g. the Windows .bat) — verify directly.
+  if (isAbsolute(cmd)) return existsSync(cmd);
+  return which(cmd);
 }
 
 export interface RunFlowOptions {
