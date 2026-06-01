@@ -1,0 +1,13 @@
+# Smoke flow for list-app (no auth needed): launch and walk the bottom tabs,
+# capturing a screenshot at each milestone.
+# Run: node bin/cli.js run --platform android --app list-app --flow flows/navigate-tabs.yaml --watch
+appId: com.lucas.listapp
+---
+- launchApp:
+    clearState: true
+- takeScreenshot: 001_home
+- tapOn: "Explore"
+- takeScreenshot: 002_explore
+- assertVisible: "Explore"
+- tapOn: "Home"
+- takeScreenshot: 003_back_home

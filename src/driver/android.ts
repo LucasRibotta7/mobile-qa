@@ -1,4 +1,3 @@
-import type { AppTarget } from "../types.js";
 import { adbPath, run } from "./exec.js";
 
 /** List attached Android devices/emulators (state == "device"). */
@@ -23,24 +22,4 @@ export async function resolveAndroidDevice(requested: string): Promise<string> {
     throw new Error(`Multiple Android devices attached (${devices.join(", ")}). Pass --device <udid>.`);
   }
   return devices[0];
-}
-
-export function buildAndroidCaps(device: string, app: AppTarget): Record<string, unknown> {
-  const caps: Record<string, unknown> = {
-    platformName: "Android",
-    "appium:automationName": "UiAutomator2",
-    "appium:udid": device,
-    "appium:newCommandTimeout": 300,
-    // Keep typed unicode/secret text working reliably.
-    "appium:unicodeKeyboard": true,
-    "appium:resetKeyboard": true,
-  };
-  if (app.path) {
-    caps["appium:app"] = app.path;
-  } else if (app.id) {
-    caps["appium:appPackage"] = app.id;
-    if (app.activity) caps["appium:appActivity"] = app.activity;
-    else caps["appium:appWaitActivity"] = "*";
-  }
-  return caps;
 }

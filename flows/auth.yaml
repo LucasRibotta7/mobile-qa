@@ -1,0 +1,19 @@
+# Example auth flow. Credentials come from `--creds <group>` as env vars
+# (USERNAME/PASSWORD), so no secret value ever lives in this file or in git.
+# Run: node bin/cli.js run --platform android --app list-app --flow flows/auth.yaml --creds default_user
+appId: com.lucas.listapp
+---
+- launchApp:
+    clearState: true
+- takeScreenshot: 001_login
+- tapOn:
+    id: "emailField"
+- inputText: ${USERNAME}
+- tapOn:
+    id: "passwordField"
+- inputText: ${PASSWORD}
+- takeScreenshot: 002_filled
+- tapOn:
+    id: "signInButton"
+- takeScreenshot: 003_after_submit
+- assertVisible: "Home"

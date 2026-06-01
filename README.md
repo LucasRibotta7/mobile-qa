@@ -1,81 +1,81 @@
 # mobile-qa
 
-Agent-driven mobile QA. You give an agent a natural-language flow —
-*"do the auth flow with the default user and confirm it lands on Home"* — and it drives a
-**real device** (Android on Windows, iOS on Mac), executes the taps/typing, and captures a
-screenshot at every milestone, ending with a `report.md`.
+Agent-driven mobile QA for **apps you control**. You give an agent a natural-language flow —
+*"do the auth flow with the default user and confirm it lands on Home"* — and it **authors a
+[Maestro](https://maestro.dev) flow**, runs it on a **real device** (Android on Windows, iOS
+on Mac), captures a screenshot at every milestone, and writes a `report.md` — repairing the
+flow if it fails.
 
-The agent is a **Claude Code skill** (`skills/mobile-qa/SKILL.md`). Device control is a
-thin TypeScript CLI over **Appium**, so the *same* flow runs on Android and iOS — only the
-driver capabilities differ.
+The agent is a **Claude Code skill** (`skills/mobile-qa/SKILL.md`). Maestro does the actual
+driving (taps, waits, retries) far more robustly than tapping a device step-by-step, and the
+*same* flow runs on Android and iOS — only `--platform` changes.
+
+## Why Maestro (and when not to)
+
+- **This repo = QA of your own app**: you can add `testID`s and predefine the flow, so
+  Maestro's declarative, low-flake YAML is the right tool. Flows are version-controlled and
+  CI-friendly.
+- **Exploring a third-party app** whose flow you can't predefine needs an adaptive
+  observe→act driver instead — a different mode, intentionally out of scope here.
 
 ## Architecture
 
 Two channels against the same device:
 
-- **Functional** (what the agent consumes): Appium → pixel-perfect screenshot + UI tree +
-  tap/type/swipe.
+- **Functional** (what runs the test): Maestro → flow execution + milestone screenshots.
 - **Observation** (what *you* watch, optional `--watch`): scrcpy on Android / Simulator on
-  Mac. Decorative — the agent never reads from it.
+  Mac. Decorative — the test never reads from it.
 
-Locators prefer `accessibilityId` (React Native `testID` / `accessibilityLabel`), falling
-back to visible text, then coordinates.
+Locators prefer `id` (React Native `testID` / `accessibilityLabel`), then visible text.
 
 ## Setup
 
-### Common
 ```
 npm install
 npm run build      # compiles src/ → bin/
-npm i -g appium
 ```
 
-### Android (Windows or Mac)
-```
-appium driver install uiautomator2
-```
-- A JDK and the Android SDK platform-tools (`adb`). On this machine `adb` is auto-detected
-  from the bundled scrcpy copy; otherwise put it on PATH or set `QA_ADB`.
-- Start an emulator (AVD) or connect a device with USB debugging.
+Install Maestro (needs **Java 17+**):
+- macOS / Linux: `curl -fsSL "https://get.maestro.mobile.dev" | bash`
+- Windows: see https://docs.maestro.dev/getting-started/installing-maestro/windows
+  (native or WSL2). Maestro drives Android over `adb`.
 
-### iOS (Mac only)
-```
-appium driver install xcuitest
-```
-- Xcode + command line tools. Boot a simulator (`xcrun simctl boot <udid>` or open
-  Simulator.app). Physical devices need WDA signing — set `xcodeOrgId`/`xcodeSigningId`
-  in `qa.config.json`.
+Per platform:
+- **Android** (Windows or Mac): a JDK + Android platform-tools (`adb`). On this machine `adb`
+  is auto-detected from the bundled scrcpy copy; otherwise put it on PATH or set `QA_ADB`.
+  Start an emulator (AVD) or connect a device with USB debugging.
+- **iOS** (Mac only): Xcode + command line tools; boot a simulator. Maestro uses idb under
+  the hood for iOS.
 
-### Credentials
+Credentials:
 ```
 cp .qa.secrets.json.example .qa.secrets.json   # then fill in real values
 ```
-`.qa.secrets.json` is gitignored. The agent references secrets by `group.field`
-(e.g. `default_user.password`) and the CLI masks the value in all output.
+`.qa.secrets.json` is gitignored. Flows reference secrets as env vars (`${USERNAME}`,
+`${PASSWORD}`); pass `--creds <group>` at run time and the CLI injects + masks them. No
+secret value ever lives in a flow or in git.
 
 ## CLI reference
 
 | Command | Purpose |
 |---|---|
-| `node bin/cli.js doctor` | Check deps + available devices per platform |
-| `node bin/cli.js session start --platform android\|ios --app <alias\|path> [--device auto\|<udid>] [--watch]` | Start an Appium session + run dir |
-| `node bin/cli.js observe` | Screenshot + simplified UI tree (JSON) |
-| `node bin/cli.js tap --id <id> \| --text "<t>" \| --x <n> --y <n>` | Tap |
-| `node bin/cli.js type --id <id> --value "<t>" \| --secret <group.field>` | Type text / credential |
-| `node bin/cli.js swipe --dir up\|down\|left\|right` | Swipe |
-| `node bin/cli.js back \| launch --id <appId> \| terminate --id <appId>` | Nav / app control |
-| `node bin/cli.js watch` | Open live mirror |
-| `node bin/cli.js session stop` | End session + cleanup |
+| `node bin/cli.js doctor` | Check Maestro/Java + available devices per platform |
+| `node bin/cli.js run --platform android\|ios --app <alias> --flow <path> [--creds <group>] [--watch]` | Run a Maestro flow, collect screenshots |
+| `node bin/cli.js watch --platform android\|ios [--device <udid>]` | Open the live mirror |
 
-Artifacts land in `runs/<timestamp>/`: numbered screenshots, `actions.jsonl`, `report.md`.
+Artifacts land in `runs/<timestamp>/`: numbered screenshots, `maestro.log` (scrubbed),
+`actions.jsonl`, and the agent-written `report.md`. `run` exits with Maestro's exit code.
 
-## Configuration
+## Flows
 
-`qa.config.json` defines the Appium URL, the loop step budget (`maxSteps`), and named app
-targets per platform. The `list-app` alias points at the Expo app in `../list-app`.
+Authored under `flows/`. See `flows/auth.yaml` (credentials via env) and
+`flows/navigate-tabs.yaml` (no-auth smoke test) for the patterns. `qa.config.json` maps app
+aliases (e.g. `list-app`) to package/bundle ids per platform and sets `maxRepairs` (the
+agent's repair budget).
 
 ## Status
 
-- ✅ Scaffold, CLI, doctor, session/observe/actions, secrets, report, watch — built & compiling.
-- ⏳ End-to-end run requires Appium + a running emulator/device (not bundled).
+- ✅ Maestro runner, CLI (doctor/run/watch), device resolution, secret-as-env injection,
+  report scaffolding, watch, example flows — built & compiling.
+- ⏳ End-to-end run requires Maestro + a running emulator/device (not bundled).
 - ⏳ iOS path validates only on macOS.

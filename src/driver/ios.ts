@@ -1,4 +1,3 @@
-import type { AppTarget, QaConfig } from "../types.js";
 import { run } from "./exec.js";
 
 interface SimctlDevice {
@@ -26,26 +25,4 @@ export async function resolveIosDevice(requested: string): Promise<string> {
     throw new Error(`Multiple booted simulators (${sims.map((s) => s.name).join(", ")}). Pass --device <udid>.`);
   }
   return sims[0].udid;
-}
-
-export function buildIosCaps(
-  device: string,
-  app: AppTarget,
-  config: QaConfig,
-): Record<string, unknown> {
-  const caps: Record<string, unknown> = {
-    platformName: "iOS",
-    "appium:automationName": "XCUITest",
-    "appium:udid": device,
-    "appium:newCommandTimeout": 300,
-  };
-  if (app.path) caps["appium:app"] = app.path;
-  else if (app.id) caps["appium:bundleId"] = app.id;
-
-  // Physical devices need WDA signing; harmless for simulators (ignored).
-  if (config.ios?.xcodeOrgId) {
-    caps["appium:xcodeOrgId"] = config.ios.xcodeOrgId;
-    caps["appium:xcodeSigningId"] = config.ios.xcodeSigningId ?? "iPhone Developer";
-  }
-  return caps;
 }

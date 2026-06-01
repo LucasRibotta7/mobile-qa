@@ -1,101 +1,101 @@
 ---
 name: mobile-qa
 description: >-
-  Agent-driven mobile QA. Given a natural-language flow (e.g. "do the auth flow
-  with these credentials") drive a real Android (Windows) or iOS (Mac) device via
-  Appium, executing taps/typing and capturing a screenshot at every milestone, then
-  write a QA report. Use when asked to QA, smoke-test, or walk a flow on a mobile app.
+  Agent-driven mobile QA for your own app via Maestro. Given a natural-language flow
+  (e.g. "do the auth flow with the default user"), author a Maestro YAML flow, run it on a
+  real Android (Windows) or iOS (Mac) device, capture screenshots per milestone, and write
+  a QA report — repairing the flow if it fails. Use when asked to QA, smoke-test, or
+  regression-check a flow on a mobile app whose source you control.
 ---
 
-# Mobile QA (agent-driven)
+# Mobile QA (Maestro, agent-authored flows)
 
-You are the agent that drives the device. You run a closed loop:
-**observe → reason → act → re-observe**, capturing screenshots and ending with a report.
+Your job is to turn a natural-language goal into a **Maestro flow**, run it, and verify the
+result. The intelligence is in *authoring and repairing the YAML* — Maestro handles the
+actual taps, waits, and retries far more reliably than driving the device tap-by-tap.
 
-The device-control surface is a TypeScript CLI in this project. Call it via Bash:
+The runner is a thin TypeScript CLI. Call it via Bash:
 
 ```
 node bin/cli.js <command> [flags]
 ```
 
-Every command prints **one line of JSON** to stdout. Parse it. `ok:false` means the
-step failed — read `error` and adapt; never retry the identical call blindly.
+Each command prints **one line of JSON** to stdout. `run` also exits with Maestro's exit
+code (0 = passed). Parse the JSON; on failure read `logTail` and the screenshots, then fix
+the flow — never re-run an unchanged failing flow.
 
 ## Before anything: build + preflight
 
-1. If `bin/cli.js` is missing, run `npm install && npm run build` in the project root.
-2. Run `node bin/cli.js doctor`. Confirm: Appium installed, the target platform's
-   tooling present, and a device available (`androidDevices` non-empty on Windows,
-   `bootedSimulators` non-empty on Mac). If something's missing, tell the user exactly
-   what to install — do not proceed.
+1. If `bin/cli.js` is missing: `npm install && npm run build`.
+2. `node bin/cli.js doctor`. Confirm: `maestro` installed, `java` present, and a device
+   available (`androidDevices` non-empty on Windows / `bootedSimulators` on Mac). If
+   something's missing, tell the user exactly what to install — do not proceed.
 
-## Starting a run
+## Authoring the flow
+
+Write a YAML file under `flows/<name>.yaml`. Structure:
+
+```yaml
+appId: com.your.app          # the package (Android) / bundleId (iOS)
+---
+- launchApp:
+    clearState: true
+- takeScreenshot: 001_start  # capture a milestone — numbered, descriptive
+- tapOn:
+    id: "signInButton"       # prefer id (RN testID); else visible text: tapOn: "Sign in"
+- inputText: ${USERNAME}     # credentials are env vars, never literals (see below)
+- assertVisible: "Home"      # the success condition
+```
+
+Guidance:
+- **Capture liberally**: a `takeScreenshot` before and after each meaningful state change.
+  Numbered names sort in order and land in the run folder automatically.
+- **Locators**: prefer `id:` (React Native `testID` / `accessibilityLabel`); fall back to
+  visible text; use `point:` only as a last resort.
+- **Assertions** encode the goal's success condition (`assertVisible`, `assertNotVisible`).
+  For fuzzy checks you can use Maestro's `assertWithAI`.
+- The **same flow runs on both platforms** — only `--platform` changes at run time.
+- If you need to discover real selectors, tell the user to run `maestro studio` (interactive)
+  — it's a human-driven tool, not something you launch from here.
+
+## Credentials (never in the YAML)
+
+- Secrets live in `.qa.secrets.json` (gitignored), grouped by key. In the flow you reference
+  them as env vars: `${USERNAME}`, `${PASSWORD}` (a group's fields, uppercased).
+- At run time pass `--creds <group>`; the CLI injects the values as Maestro `--env` and masks
+  them in the saved log. The YAML stays secret-free and commit-safe.
+- Never print credential values in messages or the report.
+
+## Running
 
 ```
-node bin/cli.js session start --platform android|ios --app <alias|path> [--device auto|<udid>] [--watch]
+node bin/cli.js run --platform android|ios --app <alias> --flow flows/<name>.yaml [--creds <group>] [--watch]
 ```
 
-- `--app` is an alias from `qa.config.json` (e.g. `list-app`) or a path to `.apk`/`.app`/`.ipa`.
-- `--platform ios` only works on macOS; on Windows the CLI refuses it with a clear error.
-- `--watch` opens the live mirror (scrcpy on Android, Simulator on Mac) **for the human** —
-  you never read from it. Capture comes from the CLI, not the mirror.
-- The response gives you `runDir` (where screenshots land) and `maxSteps` (your loop budget).
+- `--watch` opens the live mirror (scrcpy on Android, Simulator on Mac) **for the human**.
+- Response: `{ ok, exitCode, runDir, screenshots:[...], logTail }`. Screenshots and a
+  scrubbed `maestro.log` land in `runDir` (`runs/<timestamp>/`).
 
 ## The loop
 
-Repeat until the goal is met, you're stuck, or you hit `maxSteps`:
-
-1. `node bin/cli.js observe` → `{ screenshot, step, elements:[{id,text,type,bounds,clickable,secure}] }`.
-2. **Read the screenshot** with the Read tool (path = `screenshot`) AND scan `elements`.
-   Decide the single next action toward the goal.
-3. Act — always prefer the most stable locator available:
-   - `node bin/cli.js tap --id <accessibilityId>`   ← preferred (RN `testID`/`accessibilityLabel`)
-   - `node bin/cli.js tap --text "<visibleText>"`    ← fallback
-   - `node bin/cli.js tap --x <n> --y <n>`           ← last resort (use element `bounds` center)
-   - `node bin/cli.js type --id <id> --value "<text>"`
-   - `node bin/cli.js type --id <id> --secret <group.field>`   ← credentials (see below)
-   - `node bin/cli.js swipe --dir up|down|left|right`
-   - `node bin/cli.js back`
-4. `observe` again to confirm the state changed as expected. Each `observe` saves a
-   numbered milestone screenshot automatically.
-
-**Stuck detection:** if two consecutive observes show the same screen after an action,
-stop and report it — don't loop. If you cannot find a control the flow needs, report what
-you see rather than guessing coordinates repeatedly.
-
-## Credentials (never handle them in the clear)
-
-- Credentials live in `.qa.secrets.json` (gitignored), grouped by key. You reference them
-  by `group.field`, never by value.
-- To type a password: `type --id passwordField --secret default_user.password`. The CLI
-  resolves the value, types it, and masks it everywhere (stdout, `actions.jsonl`).
-- Do **not** print credential values in your messages or the report. If the user pastes a
-  credential into chat, ask them to put it in `.qa.secrets.json` instead.
-
-## Finishing
-
-1. Verify the goal's success condition against the final `observe` (expected screen,
-   text present, no error banner).
-2. Write `report.md` into `runDir` (use the Write tool) with: the goal, each step
-   (action + milestone screenshot filename), the pass/fail verdict per assertion, and any
-   anomalies. Never include secret values.
-3. `node bin/cli.js session stop` to end the Appium session and close any server we spawned.
+1. Author `flows/<name>.yaml` from the goal.
+2. `run` it.
+3. If `ok:false`: Read `logTail` and the screenshots (Read tool) to see where it broke
+   (wrong selector, missing wait, unexpected screen). **Fix the YAML** and re-run. Repeat up
+   to `maxRepairs` (from `qa.config.json`), then stop and report what's blocking.
+4. On `ok:true`: Read the milestone screenshots, confirm the success assertion really
+   reflects the goal, and write `report.md` into `runDir` (Write tool): the goal, each
+   milestone (screenshot filename), the verdict, and any anomalies. No secret values.
 
 ## Example: "do the auth flow with the default user, confirm it lands on Home"
 
 ```
 node bin/cli.js doctor
-node bin/cli.js session start --platform android --app list-app --watch
-node bin/cli.js observe                      # → see login screen, read screenshot
-node bin/cli.js tap  --id emailField
-node bin/cli.js type --id emailField   --secret default_user.username
-node bin/cli.js tap  --id passwordField
-node bin/cli.js type --id passwordField --secret default_user.password
-node bin/cli.js tap  --id signInButton
-node bin/cli.js observe                      # → confirm Home screen + greeting
-# write runs/<ts>/report.md, then:
-node bin/cli.js session stop
+# author flows/auth.yaml (see flows/auth.yaml for the template)
+node bin/cli.js run --platform android --app list-app --flow flows/auth.yaml --creds default_user --watch
+# read runs/<ts>/*.png, verify "Home" reached, write runs/<ts>/report.md
 ```
 
-The identical flow runs on iOS by changing only `--platform ios` (on a Mac) — locators by
-`accessibilityId` resolve on both platforms.
+> Scope: this skill QAs apps **you control** (you can add `testID`s and predefine the flow).
+> For exploring a third-party app whose flow you can't predefine, a live observe→act driver
+> is the right tool instead — that's a separate mode, not this one.
