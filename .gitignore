@@ -1,0 +1,6 @@
+node_modules/
+bin/
+runs/
+.qa.secrets.json
+.qa-session.json
+*.log

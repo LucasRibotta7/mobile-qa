@@ -1,0 +1,6 @@
+{
+  "name": "mobile-qa",
+  "version": "0.1.0",
+  "description": "Agent-driven mobile QA: natural-language flows that drive a real Android (Windows) or iOS (Mac) device via Appium and capture screenshots at each milestone.",
+  "skills": ["./skills/mobile-qa/SKILL.md"]
+}

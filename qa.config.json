@@ -1,0 +1,16 @@
+{
+  "appiumUrl": "http://127.0.0.1:4723",
+  "maxSteps": 30,
+  "apps": {
+    "list-app": {
+      "android": { "id": "com.lucas.listapp", "activity": ".MainActivity" },
+      "ios": { "id": "com.lucas.listapp" }
+    }
+  },
+  "android": { "defaultDevice": "auto" },
+  "ios": {
+    "defaultDevice": "auto",
+    "xcodeOrgId": "",
+    "xcodeSigningId": "iPhone Developer"
+  }
+}
